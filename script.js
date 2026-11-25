@@ -2,12 +2,13 @@
   "use strict";
 
   // ===== CONFIG =====
+  // Đã cập nhật và loại bỏ các proxy chết hoặc yêu cầu API key
   const PROXIES = [
     u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u),
     u => "https://corsproxy.io/?url=" + encodeURIComponent(u),
     u => "https://api.codetabs.com/v1/proxy/?quest=" + encodeURIComponent(u),
-    u => "https://cors-anywhere.herokuapp.com/" + u,
-    u => "https://proxy.cors.sh/" + u
+    u => "https://api.cors.lol/?url=" + encodeURIComponent(u),
+    u => "https://cors.eu.org/" + u
   ];
 
   const PROTECTION_SIGNATURES = [
@@ -62,22 +63,14 @@
 
   const MAX_SUBRESOURCES = 60;
   const FETCH_CONCURRENCY = 5;
+  const FETCH_TIMEOUT_MS = 12000; // 12s timeout
 
   // ===== DOM =====
   const $ = id => document.getElementById(id);
   const ui = {
-    device: $("device"),
-    url: $("url"),
-    run: $("run"),
-    status: $("status"),
-    err: $("err"),
-    log: $("log"),
-    tagCount: $("tagCount"),
-    tags: $("tags"),
-    source: $("source"),
-    copy: $("copy"),
-    download: $("download"),
-    fullToggle: $("fullToggle")
+    device: $("device"), url: $("url"), run: $("run"), status: $("status"),
+    err: $("err"), log: $("log"), tagCount: $("tagCount"), tags: $("tags"),
+    source: $("source"), copy: $("copy"), download: $("download"), fullToggle: $("fullToggle")
   };
 
   const tabBtns = document.querySelectorAll(".tab");
@@ -109,22 +102,15 @@
   function detectDevice() {
     const ua = navigator.userAgent || "";
     const platform = navigator.platform || "";
-    const isIOS = /iPad|iPhone|iPod/.test(ua) ||
-                  (platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    const isMac = /Mac/.test(platform) && !isIOS;
-    const isAndroid = /Android/.test(ua);
-    const isWindows = /Win/.test(platform);
-
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
     let name = "unknown";
     if (isIOS) name = "iOS";
-    else if (isAndroid) name = "Android";
-    else if (isMac) name = "macOS";
-    else if (isWindows) name = "Windows";
+    else if (/Android/.test(ua)) name = "Android";
+    else if (/Mac/.test(platform)) name = "macOS";
+    else if (/Win/.test(platform)) name = "Windows";
     else if (/Linux/.test(platform)) name = "Linux";
 
-    const screenInfo = `${screen.width}x${screen.height}@${window.devicePixelRatio}x`;
-    const touch = navigator.maxTouchPoints || 0;
-    return { isIOS, name, screen: screenInfo, touch };
+    return { name, screen: `${screen.width}x${screen.height}@${window.devicePixelRatio}x`, touch: navigator.maxTouchPoints || 0 };
   }
 
   const device = detectDevice();
@@ -134,32 +120,39 @@
   function normalizeURL(input, base) {
     let v = (input || "").trim();
     if (!v) return null;
-    if (v.startsWith("data:") || v.startsWith("javascript:") ||
-        v.startsWith("#") || v.startsWith("mailto:")) return null;
+    if (v.startsWith("data:") || v.startsWith("javascript:") || v.startsWith("#") || v.startsWith("mailto:")) return null;
     try {
       const u = base ? new URL(v, base) : new URL(v.includes("://") ? v : "https://" + v);
       if (!["http:", "https:"].includes(u.protocol)) return null;
-      if (!u.hostname) return null;
-      return u.toString();
+      return u.hostname ? u.toString() : null;
     } catch { return null; }
   }
 
   async function fetchWithFallback(url) {
     let lastErr = null;
     for (let i = 0; i < PROXIES.length; i++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+      
       try {
         const res = await fetch(PROXIES[i](url), {
           method: "GET",
           headers: { "Accept": "*/*" },
           cache: "no-store",
-          redirect: "follow"
+          redirect: "follow",
+          signal: controller.signal // Áp dụng timeout
         });
+        clearTimeout(timeoutId);
+        
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
         if (text && text.length > 0) return text;
-      } catch (e) { lastErr = e; }
+      } catch (e) {
+        clearTimeout(timeoutId);
+        lastErr = e;
+      }
     }
-    throw new Error("Toàn bộ proxy thất bại: " + (lastErr?.message || "không rõ"));
+    throw new Error("Toàn bộ proxy thất bại: " + (lastErr?.message || "Load failed"));
   }
 
   function isProtected(src) {
@@ -197,8 +190,7 @@
   function decodeUnicode(src, log) {
     if (!src.includes("\\u")) return src;
     const out = src.replace(UNICODE_REGEX, (_, hex) => {
-      const code = parseInt(hex, 16);
-      try { return String.fromCharCode(code); } catch { return _; }
+      try { return String.fromCharCode(parseInt(hex, 16)); } catch { return _; }
     });
     if (out !== src) log.push("ĐÃ GIẢI MÃ UNICODE ESCAPE");
     return out;
@@ -228,8 +220,7 @@
 
   function extractTags(src) {
     if (!src) return [];
-    const seen = new Set();
-    const result = [];
+    const seen = new Set(), result = [];
     TAG_REGEX.lastIndex = 0;
     let m;
     while ((m = TAG_REGEX.exec(src)) !== null) {
@@ -249,18 +240,13 @@
         if (abs) urls.add(abs);
       }
     };
-    collect(RES_SCRIPT, 1);
-    collect(RES_CSS, 1);
-    collect(RES_IMG, 1);
-    collect(RES_SRC, 2);
-    collect(RES_FONT, 1);
+    collect(RES_SCRIPT, 1); collect(RES_CSS, 1); collect(RES_IMG, 1); collect(RES_SRC, 2); collect(RES_FONT, 1);
     return [...urls];
   }
 
   async function fetchBatch(urls, log, onProgress) {
     const results = new Map();
     let done = 0;
-    const total = urls.length;
     const queue = [...urls];
 
     async function worker() {
@@ -269,132 +255,95 @@
         try {
           const content = await fetchWithFallback(u);
           results.set(u, content);
-          log.push(`ĐÃ TẢI: ${u.slice(0, 70)}${u.length > 70 ? "..." : ""} (${content.length} ký tự)`);
+          log.push(`ĐÃ TẢI: ${u.slice(0, 40)}... (${content.length} ký tự)`);
         } catch (e) {
-          log.push(`LỖI TẢI: ${u.slice(0, 70)} — ${e.message}`);
+          log.push(`LỖI TẢI: ${u.slice(0, 40)}... — ${e.message}`);
         } finally {
           done++;
-          if (onProgress) onProgress(done, total);
+          if (onProgress) onProgress(done, urls.length);
         }
       }
     }
 
-    const workers = Array.from(
-      { length: Math.min(FETCH_CONCURRENCY, urls.length) },
-      () => worker()
-    );
-    await Promise.all(workers);
+    await Promise.all(Array.from({ length: Math.min(FETCH_CONCURRENCY, urls.length) }, () => worker()));
     return results;
   }
 
   function buildFullSource(html, baseURL, resources) {
-    const parts = [];
-    parts.push("<!-- ============================================== -->");
-    parts.push("<!-- MÃ NGUỒN GỐC ĐẦY ĐỦ 100% -->");
-    parts.push(`<!-- URL GỐC: ${baseURL} -->`);
-    parts.push(`<!-- THỜI ĐIỂM: ${new Date().toISOString()} -->`);
-    parts.push(`<!-- TỔNG TÀI NGUYÊN CON: ${resources.size} -->`);
-    parts.push("<!-- ============================================== -->\n");
-    parts.push(html);
-    parts.push("\n\n<!-- ============================================== -->");
-    parts.push("<!-- TÀI NGUYÊN CON ĐÃ TẢI ĐẦY ĐỦ -->");
-    parts.push("<!-- ============================================== -->\n");
-
+    const parts = [
+      "<!-- MÃ NGUỒN GỐC ĐẦY ĐỦ 100% -->",
+      `<!-- URL GỐC: ${baseURL} -->`,
+      `<!-- THỜI ĐIỂM: ${new Date().toISOString()} -->`,
+      `<!-- TỔNG TÀI NGUYÊN CON: ${resources.size} -->\n`,
+      html,
+      "\n\n<!-- ============================================== -->",
+      "<!-- TÀI NGUYÊN CON ĐÃ TẢI ĐẦY ĐỦ -->",
+      "<!-- ============================================== -->\n"
+    ];
     for (const [url, content] of resources) {
-      parts.push(`\n\n<!-- ========== BẮT ĐẦU: ${url} ========== -->`);
-      parts.push(content);
-      parts.push(`<!-- ========== KẾT THÚC: ${url} ========== -->`);
+      parts.push(`\n<!-- BẮT ĐẦU: ${url} -->\n${content}\n<!-- KẾT THÚC: ${url} -->`);
     }
     return parts.join("\n");
   }
 
   // ===== UI UPDATE =====
   function escapeHTML(s) {
-    return String(s).replace(/[&<>"']/g, c =>
-      ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" }[c]));
+    return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" }[c]));
   }
 
   function setStatus(text, spinning) {
-    ui.status.innerHTML = spinning
-      ? `<span class="spinner"></span>${escapeHTML(text)}`
-      : escapeHTML(text);
-  }
-
-  function showError(msg) {
-    ui.err.textContent = msg;
-    ui.err.classList.remove("hidden");
-  }
-
-  function clearError() {
-    ui.err.textContent = "";
-    ui.err.classList.add("hidden");
+    ui.status.innerHTML = spinning ? `<span class="spinner"></span>${escapeHTML(text)}` : escapeHTML(text);
   }
 
   function renderLog(lines) {
-    if (!lines.length) { ui.log.innerHTML = ""; return; }
-    ui.log.innerHTML = lines.map((l, i) => {
-      const cls = l.includes("HOÀN TẤT") || l.includes("PHÁT HIỆN") || l.includes("ĐÃ TẢI") ? "ok"
-                : l.includes("KHÔNG") || l.includes("LỖI") ? "warn" : "";
-      return `<div class="${cls}" style="animation-delay:${Math.min(i * 12, 240)}ms">• ${escapeHTML(l)}</div>`;
-    }).join("");
+    ui.log.innerHTML = lines.length ? lines.map((l, i) => {
+      const cls = l.includes("HOÀN TẤT") || l.includes("ĐÃ TẢI") ? "ok" : l.includes("KHÔNG") || l.includes("LỖI") ? "warn" : "";
+      return `<div class="${cls}">• ${escapeHTML(l)}</div>`;
+    }).join("") : "";
   }
 
   function renderTags(tags) {
-    if (!tags.length) { ui.tagCount.textContent = "0"; ui.tags.innerHTML = ""; return; }
     ui.tagCount.textContent = tags.length;
-    ui.tags.innerHTML = tags.map((t, i) =>
-      `<span class="tag" style="animation-delay:${Math.min(i * 15, 400)}ms">${escapeHTML(t)}</span>`
-    ).join("");
+    ui.tags.innerHTML = tags.map(t => `<span class="tag">${escapeHTML(t)}</span>`).join("");
   }
 
   function renderSource(src) {
-    if (!src) { ui.source.textContent = ""; currentSource = ""; return; }
-    ui.source.textContent = src;
-    currentSource = src;
+    currentSource = src || "";
+    ui.source.textContent = currentSource;
   }
 
   // ===== MAIN FLOW =====
   async function run() {
     if (running) return;
-
     const baseURL = normalizeURL(ui.url.value);
-    if (!baseURL) { showError("URL không hợp lệ"); return; }
+    if (!baseURL) { 
+      ui.err.textContent = "URL không hợp lệ"; 
+      ui.err.classList.remove("hidden"); 
+      return; 
+    }
 
     running = true;
     ui.run.disabled = true;
-    clearError();
-    currentSource = "";
-
-    // Xóa dữ liệu cũ
-    ui.log.innerHTML = "";
-    ui.tags.innerHTML = "";
-    ui.tagCount.textContent = "0";
-    ui.source.textContent = "";
-
-    // Chuyển sang tab NHẬT KÝ để theo dõi tiến trình
+    ui.err.classList.add("hidden");
+    ui.log.innerHTML = ""; ui.tags.innerHTML = ""; ui.tagCount.textContent = "0"; ui.source.textContent = "";
+    
     switchTab("log");
 
     const log = [];
-    const wantFull = ui.fullToggle ? ui.fullToggle.checked : true;
+    const wantFull = ui.fullToggle.checked;
 
     try {
-      setStatus("Đang tải HTML gốc...", true);
-      log.push("BẮT ĐẦU TẢI HTML GỐC");
-      renderLog(log);
+      setStatus("Đang tải HTML...", true);
+      log.push("BẮT ĐẦU TẢI HTML GỐC"); renderLog(log);
 
       let raw = await fetchWithFallback(baseURL);
-      log.push(`ĐÃ TẢI HTML GỐC: ${raw.length.toLocaleString()} ký tự`);
-      renderLog(log);
+      log.push(`ĐÃ TẢI HTML GỐC: ${raw.length} ký tự`); renderLog(log);
 
       if (isProtected(raw)) {
-        log.push("PHÁT HIỆN BẢO VỆ MÃ NGUỒN");
-        log.push("TIẾN HÀNH BẺ KHÓA");
-        raw = stripEventAttrs(raw, log);
-        raw = stripScriptBlocks(raw, log);
-        raw = decodeEntities(raw, log);
-        raw = decodeUnicode(raw, log);
-        raw = decodeBase64(raw, log);
-        raw = stripFrameBusters(raw, log);
+        log.push("PHÁT HIỆN BẢO VỆ MÃ NGUỒN"); log.push("TIẾN HÀNH BẺ KHÓA");
+        raw = stripEventAttrs(raw, log); raw = stripScriptBlocks(raw, log);
+        raw = decodeEntities(raw, log); raw = decodeUnicode(raw, log);
+        raw = decodeBase64(raw, log); raw = stripFrameBusters(raw, log);
         log.push("BẺ KHÓA HOÀN TẤT");
       } else {
         log.push("KHÔNG PHÁT HIỆN BẢO VỆ MÃ NGUỒN");
@@ -405,31 +354,23 @@
       if (wantFull) {
         const subURLs = extractResources(raw, baseURL).slice(0, MAX_SUBRESOURCES);
         if (subURLs.length) {
-          log.push(`PHÁT HIỆN ${subURLs.length} TÀI NGUYÊN CON — TIẾN HÀNH TẢI`);
-          renderLog(log);
+          log.push(`TÌM THẤY ${subURLs.length} TÀI NGUYÊN CON`); renderLog(log);
           resources = await fetchBatch(subURLs, log, (done, total) => {
-            setStatus(`Đang tải tài nguyên con: ${done}/${total}`, true);
+            setStatus(`Đang tải tài nguyên: ${done}/${total}`, true);
             renderLog(log);
           });
-          log.push(`ĐÃ TẢI ${resources.size}/${subURLs.length} TÀI NGUYÊN CON`);
-        } else {
-          log.push("KHÔNG CÓ TÀI NGUYÊN CON");
         }
       }
-      renderLog(log);
 
-      const finalSource = wantFull
-        ? buildFullSource(raw, baseURL, resources)
-        : raw;
-
-      setStatus(`HOÀN TẤT — ${finalSource.length.toLocaleString()} ký tự · ${resources.size} tài nguyên con`, false);
+      const finalSource = wantFull ? buildFullSource(raw, baseURL, resources) : raw;
+      setStatus(`HOÀN TẤT — ${finalSource.length} ký tự`, false);
       renderTags(extractTags(raw));
       renderSource(finalSource);
-
-      // Chuyển sang tab MÃ NGUỒN sau khi hoàn tất
+      
       switchTab("source");
     } catch (e) {
-      showError(e.message || "Lỗi không xác định");
+      ui.err.textContent = e.message || "Lỗi không xác định";
+      ui.err.classList.remove("hidden");
       setStatus("Thất bại", false);
       log.push(`LỖI: ${e.message}`);
       renderLog(log);
@@ -441,9 +382,7 @@
 
   // ===== EVENTS =====
   ui.run.addEventListener("click", run);
-  ui.url.addEventListener("keydown", e => {
-    if (e.key === "Enter") { e.preventDefault(); run(); }
-  });
+  ui.url.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); run(); } });
 
   ui.copy.addEventListener("click", async () => {
     if (!currentSource) return;
@@ -454,11 +393,8 @@
       setTimeout(() => { ui.copy.textContent = old; }, 1200);
     } catch {
       const ta = document.createElement("textarea");
-      ta.value = currentSource;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
+      ta.value = currentSource; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
       try { document.execCommand("copy"); } catch {}
       document.body.removeChild(ta);
       ui.copy.textContent = "ĐÃ COPY";
@@ -472,9 +408,7 @@
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "source-" + Date.now() + ".html";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   });
 
