@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Mở khóa mã nguồn web</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="hero">
+  <h1>MỞ KHÓA MÃ NGUỒN WEB</h1>
+  <div class="device" id="device">THIẾT BỊ: đang quét...</div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab active" data-tab="input" role="tab">TẢI</button>
+  <button class="tab" data-tab="log" role="tab">NHẬT KÝ</button>
+  <button class="tab" data-tab="tags" role="tab">THẺ</button>
+  <button class="tab" data-tab="source" role="tab">MÃ NGUỒN</button>
+</nav>
+
+<main class="panels">
+  <section class="panel-tab active" id="tab-input" role="tabpanel">
+    <div class="panel">
+      <div class="row">
+        <input type="url" id="url" placeholder="Nhập link web (ví dụ: example.com)" autocomplete="off" spellcheck="false">
+        <button id="run">TIẾP TỤC</button>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="fullToggle" checked>
+        <span>Tải đầy đủ 100% (HTML + toàn bộ CSS / JS / IMG / FONT con)</span>
+      </label>
+      <div class="status" id="status"></div>
+      <div class="err hidden" id="err"></div>
+    </div>
+  </section>
+
+  <section class="panel-tab" id="tab-log" role="tabpanel">
+    <div class="panel">
+      <div class="label">NHẬT KÝ BẺ KHÓA</div>
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+
+  <section class="panel-tab" id="tab-tags" role="tabpanel">
+    <div class="panel">
+      <div class="label">TÊN THẺ MÃ NGUỒN GỐC (<span id="tagCount">0</span>)</div>
+      <div class="tags" id="tags"></div>
+    </div>
+  </section>
+
+  <section class="panel-tab" id="tab-source" role="tabpanel">
+    <div class="panel">
+      <div class="srcbar">
+        <div class="label" style="margin:0">MÃ NGUỒN GỐC ĐẦY ĐỦ 100%</div>
+        <div class="row">
+          <button class="ghost small" id="copy">COPY</button>
+          <button class="ghost small" id="download">TẢI VỀ</button>
+        </div>
+      </div>
+      <pre id="source"></pre>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">mod được thực hiện bởi nguyenlong</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
