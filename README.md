@@ -177,7 +177,8 @@ Desktop (>600px)              Mobile (≤600px)
 │  └─────────────┘    │       │ └──────┘ │
 │  Footer             │       │ Footer   │
 └─────────────────────┘       └──────────┘
-🚀 Cài đặt
+
+## ⚙️Cài Đặt
  
 Yêu cầu
 • Trình duyệt hiện đại (Chrome 90+, Firefox 88+, Safari 14+, Edge 90+)
