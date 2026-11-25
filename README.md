@@ -163,21 +163,6 @@
 | Chip appear | Fade + scale, stagger 15ms | 0.3s |
 | Log appear | Fade + slide, stagger 12ms | 0.25s |
 
-### Layout responsive
-
-```text
-Desktop (>600px)              Mobile (≤600px)
-┌─────────────────────┐       ┌──────────┐
-│  Header             │       │  Header  │
-│  ┌──┬──┬──┬──┐      │       │ ┌─┬─┬─┬─┐│
-│  │T │N │T │M │      │       │ │T│N│T│M││
-│  └──┴──┴──┴──┘      │       │ └─┴─┴─┴─┘│
-│  ┌─────────────┐    │       │ ┌──────┐ │
-│  │ Tab content │    │       │ │ Tab  │ │
-│  └─────────────┘    │       │ └──────┘ │
-│  Footer             │       │ Footer   │
-└─────────────────────┘       └──────────┘
-
 ## ⚙️Cài Đặt
  
 Yêu cầu
@@ -850,3 +835,18 @@ mod được thực hiện bởi nguyenlong
  
 </div>
 ```
+
+### Layout responsive
+
+```text
+Desktop (>600px)              Mobile (≤600px)
+┌─────────────────────┐       ┌──────────┐
+│  Header             │       │  Header  │
+│  ┌──┬──┬──┬──┐      │       │ ┌─┬─┬─┬─┐│
+│  │T │N │T │M │      │       │ │T│N│T│M││
+│  └──┴──┴──┴──┘      │       │ └─┴─┴─┴─┘│
+│  ┌─────────────┐    │       │ ┌──────┐ │
+│  │ Tab content │    │       │ │ Tab  │ │
+│  └─────────────┘    │       │ └──────┘ │
+│  Footer             │       │ Footer   │
+└─────────────────────┘       └──────────┘
